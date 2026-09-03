@@ -35,5 +35,5 @@ go build ./... && go vet ./...
 
 - 日志用 logrus；注释从简，只写非显而易见的决策
 - 表达式作用域只允许纯函数（无 IO 副作用）；会产生可引用输出的探测一律做成 step func
-- `reg-export`、`hosts-file` 是 Windows 专属，其它平台跳过（主要运行环境是 Windows + Git Bash）
+- `reg-export` 是 Windows 专属，其它平台跳过；`hosts-file` 的源路径按 OS 定义（`utils/const_*.go`，新增平台要补对应文件）。主要运行环境是 Windows + Git Bash
 - JS 路径只在修复回归时改动

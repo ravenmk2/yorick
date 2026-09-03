@@ -1,0 +1,274 @@
+# =============================================================================
+# Yorick 声明式备份脚本 —— sample.js 的 YAML 等价改写
+#
+# 顶层结构：
+#   version   schema 版本，便于将来演进
+#   name      脚本名称，仅用于日志展示
+#   vars      全局常量，表达式里通过 vars.XXX 引用
+#   tasks     任务列表，按声明顺序执行；每个任务内的 steps 也按顺序执行
+#
+# 通用规则：
+#   1. 动态值一律走 ${{ }} 表达式，没有裸引用
+#   2. 表达式只读：可访问 vars / env / os / steps.<id>.output / item，
+#      以及 isDir、isFile、fileExt 等纯函数（expr-lang 语法），不产生副作用
+#   3. 会产生「可被引用的输出」的探测（collect / read-ini / latest-file）
+#      必须是 step，输出经 steps.<id>.output 访问；引用只能指向上方的 step
+#   4. 只有被引用的 step 才需要写 id
+#   5. 值里含 ${{ }} 时不要用行内 flow 写法 { src: ${{ ... }} }，
+#      YAML 会把 { } 当 flow 边界截断，必须写成块状多行
+#   6. 所有 include / exclude 是模式列表：默认 glob（* ? ** {a,b} [0-9]），
+#      re: 前缀则为正则（按原样匹配，需 ^$ 自行锚定）；匹配对象是
+#      以 / 分隔的相对路径；列表内 OR、exclude 优先、空 include = 全部
+# =============================================================================
+
+version: 1
+name: sample-backup
+
+# 全局常量，对应原 JS 顶部的 var 声明
+vars:
+  PROGRAMS: C:/Programs            # 原 CUSTOM_PROGRAMS_DIR
+  USER_DATA: C:/Home/UserData      # 原 USER_DATA_DIR
+
+  # 原 IDEA_EXCLUDE_PATTERNS，glob 化（原来全是前缀匹配）。
+  # 注意：候选是文件的相对路径，glob 的 * 不跨目录，排除整棵子树要写 'xxx*/**'
+  IDEA_EXCLUDES: &idea_excludes    # &定义锚点，下方用 *idea_excludes 复用
+    - 'jdbc-drivers*/**'
+    - 'mdn*/**'
+    - 'plugins*/**'
+    - 'tasks*/**'
+    - 'workspace*/**'
+
+tasks:
+
+  # if 为任务级条件（新增能力，原 JS 没有）：表达式为真才执行，否则整个任务跳过。
+  # os 是内置变量（windows / linux / darwin）。
+  - name: Windows
+    dest: windows
+    if: ${{ os == 'windows' }}
+    steps:
+      - func: hosts-file
+        args:
+          dest: hosts.txt # 省略就是原名
+
+      # 注册表路径统一用正斜杠书写，导出时自动转反斜杠（同原 JS 行为）。
+      # 下面两条即原 exportRegSystemEnv / exportRegUserEnv 两个便捷函数。
+      - func: reg-export
+        args:
+          key: HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Control/Session Manager/Environment
+          dest: env-system.reg
+      - func: reg-export
+        args:
+          key: HKEY_CURRENT_USER/Environment
+          dest: env-user.reg
+
+  - name: SSH
+    dest: app-data/ssh
+    steps:
+      # copy 三合一：src 是文件则拷文件、是目录则拷目录（原 copyFile / copyDir），
+      # exclude 为可选正则列表（原 copyDirEx）
+      - func: copy
+        args: { src: ~/.ssh, dest: . }
+
+  - name: Git
+    dest: app-data/git
+    steps:
+      - func: copy
+        args: { src: ~/.gitconfig, dest: .gitconfig }
+
+  - name: Git Bash
+    dest: app-data/git-bash
+    steps:
+      - func: copy
+        args: { src: ~/.bash_profile, dest: .bash_profile }
+      - func: copy
+        args: { src: ~/.minttyrc, dest: .minttyrc }
+
+  - name: Go
+    dest: app-data/go
+    steps:
+      - func: copy
+        args: { src: ~/AppData/Roaming/go/env, dest: env }
+
+  - name: Notepad2
+    dest: app-data/Notepad2
+    steps:
+      - func: copy
+        # 对应原 CUSTOM_PROGRAMS_DIR + '/Notepad2/Notepad2.ini'
+        args:
+          src: ${{ vars.PROGRAMS }}/Notepad2/Notepad2.ini
+          dest: Notepad2.ini
+
+  - name: Notepad3
+    dest: app-data/Notepad3
+    steps:
+      - func: copy
+        args:
+          src: ${{ vars.PROGRAMS }}/Notepad3/Notepad3.ini
+          dest: Notepad3.ini
+
+  # dest 可含子目录，父目录自动创建（同原 JS）
+  - name: Notepad++
+    dest: app-data/Notepad++
+    steps:
+      - func: copy
+        args: { src: ~/AppData/Roaming/Notepad++/themes/Monokai.xml, dest: themes/Monokai.xml }
+
+  - name: NuGet
+    dest: app-data/NuGet
+    steps:
+      - func: copy
+        args: { src: ~/AppData/Roaming/NuGet/NuGet.Config, dest: NuGet.Config }
+
+  # if 的另一种典型用法：应用没安装就静默跳过（原 JS 只能报错刷屏）
+  - name: Chrome
+    dest: app-data/Chrome
+    if: ${{ isDir('~/AppData/Local/Google/Chrome/User Data') }}
+    steps:
+      - func: copy
+        args: { src: ~/AppData/Local/Google/Chrome/User Data/Default/Bookmarks, dest: Bookmarks }
+
+  - name: NetSarang
+    dest: app-data/NetSarang
+    steps:
+      - func: copy
+        args: { src: ~/Documents/NetSarang Computer/7, dest: '7' }   # 纯数字要加引号，否则被解析成整数
+
+  - name: MobaXterm
+    dest: app-data/MobaXterm
+    steps:
+      - func: copy
+        args:
+          src: ${{ vars.PROGRAMS }}/MobaXterm/MobaXterm.ini
+          dest: MobaXterm.ini
+
+  - name: CodeMaid
+    dest: app-data/CodeMaid
+    steps:
+      - func: copy
+        args: { src: ~/AppData/Local/CodeMaid/CodeMaid.config, dest: CodeMaid.config }
+
+  - name: Navicat
+    dest: app-data/Navicat
+    steps:
+      - func: reg-export
+        args:
+          key: HKEY_CURRENT_USER/Software/PremiumSoft/Navicat/Servers
+          dest: NavicatServers.reg
+
+  - name: HeidiSQL
+    dest: app-data/HeidiSQL
+    steps:
+      - func: reg-export
+        args: { key: HKEY_CURRENT_USER/Software/HeidiSQL, dest: HeidiSQL.reg }
+      - func: copy
+        args:
+          src: ${{ vars.PROGRAMS }}/HeidiSQL/portable_settings.txt
+          dest: portable_settings.txt
+
+  - name: QuickPopMenu
+    dest: app-data/QuickPopMenu
+    steps:
+      - func: copy
+        args:
+          src: ${{ vars.PROGRAMS }}/QuickPopMenu/settings
+          dest: settings
+      - func: copy
+        args:
+          src: ${{ vars.PROGRAMS }}/QuickPopMenu/shortcuts
+          dest: shortcuts
+
+  # ---------------------------------------------------------------------------
+  # 动态发现：先探测、后引用。原 JS 中的 firefoxProfileDir() 辅助函数
+  # 被 read-ini 一步取代。
+  #   read-ini     读 ini 文件，按路径表达式取值；[0] = 文件中第一个 section
+  #   latest-file  目录下最新的文件，输出为 {name, path, rel, ext}
+  # ---------------------------------------------------------------------------
+  - name: Firefox
+    dest: app-data/Firefox
+    steps:
+      - id: profile
+        func: read-ini
+        args:
+          file: ~/AppData/Roaming/Mozilla/Firefox/installs.ini
+          expr: '[0].Default'       # 对应原 Object.keys(ini)[0] + ini[key]['Default']
+
+      - id: bookmark
+        func: latest-file
+        args:
+          dir: ${{ steps.profile.output }}/bookmarkbackups
+          depth: 1
+
+      - func: copy
+        args:
+          src: ${{ steps.profile.output }}/prefs.js
+          dest: prefs.js
+
+      # 重命名就是 dest 上的纯表达式
+      - func: copy
+        args:
+          src: ${{ steps.bookmark.output.path }}
+          dest: ${{ steps.bookmark.output.name[0:20] + steps.bookmark.output.ext }}
+
+  - name: VS Code
+    dest: app-data/VS-Code
+    steps:
+      - func: copy
+        args: { src: ~/AppData/Roaming/Code/User/settings.json, dest: settings.json }
+      - func: copy
+        args: { src: ~/AppData/Roaming/Code/User/snippets, dest: snippets }
+
+      # exec 示例（原 JS 没有此能力，仅演示）：把命令输出存进备份目录
+      # - func: exec
+      #   args: { cmd: code --list-extensions, stdout: extensions.txt }
+
+  # if 守卫环境变量（新增）：原 JS 在 M2_HOME 未设置时会拿到空串并报错。
+  # env 是 map[string]string，缺失 key 返回 ''（同 Go 语义），显式比较即可。
+  - name: Maven
+    dest: app-data/Maven
+    if: ${{ env.M2_HOME != '' }}
+    steps:
+      # 原 logInfo；注意含冒号的值整体要加引号
+      - func: log
+        args:
+          msg: "Maven Home: ${{ env.M2_HOME }}"
+      - func: copy
+        args:
+          src: ${{ env.M2_HOME }}/conf
+          dest: conf
+      - func: copy
+        args: { src: ~/.m2/settings.xml, dest: .m2/settings.xml }
+
+  # ---------------------------------------------------------------------------
+  # 集合 + 过滤 + 循环：原 JS 中的 listJetBrainsApps() 辅助函数被 collect 取代。
+  #   collect   枚举目录；include / exclude 为模式列表（语法见顶部规则 6）；
+  #             输出 {name, path, rel, ext} 数组
+  #   foreach   任意动作都可声明，对数组逐元素执行，元素经 item 访问；
+  #             src / dest 中的表达式逐元素求值，即「转换表达式」；
+  #             空数组 = 跳过该 step 并记日志，不是错误
+  # ---------------------------------------------------------------------------
+  - name: JetBrains
+    dest: app-data/JetBrains
+    steps:
+      - id: apps
+        func: collect
+        args:
+          dir: ~/AppData/Roaming/JetBrains
+          depth: 1
+          type: dir
+          include:
+            - '*[0-9][0-9][0-9][0-9].[0-9]*'   # 如 Rider2024.1
+            # 需要精确匹配时仍可用正则：- 're:^([^\d]+)(\d{4})\.(\d+)$'
+      - func: copy
+        foreach: ${{ steps.apps.output }}
+        args:
+          src: ${{ item.path }}
+          dest: ${{ item.name }}
+          exclude: *idea_excludes           # 锚点引用 vars 里的排除列表
+
+  - name: UserData
+    dest: user-data
+    steps:
+      - func: copy
+        args:
+          src: ${{ vars.USER_DATA }}
+          dest: .

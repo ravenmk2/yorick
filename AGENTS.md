@@ -21,6 +21,7 @@ Yorick 是 Go 1.25 编写的 CLI 备份采集工具，按定义文件把应用�
 - `core/steps.go` — 8 个 step func 的注册表与实现；args 严格解码（插值 → yaml round-trip + KnownFields）
 - `utils/` — 文件/目录/ini 工具，两个引擎共用
 - `examples/` — 示例；`sample.yaml` 同时是 schema 规范文档
+- `.github/workflows/` — CI：`test.yml`（push 到 master/develop，三平台 vet + test + build），`release.yml`（push `v*` tag，交叉编译四平台二进制并上传到 release 页）
 
 ## 构建与验证
 

@@ -31,17 +31,10 @@ func (c *StepContext) resolveDest(dest string) string {
 }
 
 type copyArgs struct {
-	Src     string   `yaml:"src"`
-	Dest    string   `yaml:"dest"`
-	Exclude []string `yaml:"exclude,omitempty"`
-}
-
-type collectArgs struct {
-	Dir     string   `yaml:"dir"`
-	Depth   int      `yaml:"depth,omitempty"`
-	Type    string   `yaml:"type,omitempty"`
-	Include []string `yaml:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty"`
+	Src     string `yaml:"src"`
+	Dest    string `yaml:"dest"`
+	Include []Rule `yaml:"include,omitempty"`
+	Exclude []Rule `yaml:"exclude,omitempty"`
 }
 
 type readIniArgs struct {
@@ -103,7 +96,6 @@ func decodeStepArgs(raw map[string]any, out any) error {
 
 var stepFuncs = map[string]*stepEntry{
 	"copy":        newStepEntry[copyArgs](runCopy),
-	"collect":     newStepEntry[collectArgs](runCollect),
 	"read-ini":    newStepEntry[readIniArgs](runReadIni),
 	"latest-file": newStepEntry[latestFileArgs](runLatestFile),
 	"reg-export":  newStepEntry[regExportArgs](runRegExport),
@@ -113,12 +105,18 @@ var stepFuncs = map[string]*stepEntry{
 }
 
 func runCopy(ctx *StepContext, args *copyArgs) (any, error) {
-	ctx.logger.Infof("Copy: %s => %s", args.Src, args.Dest)
-
 	src, err := utils.ExpandUser(args.Src)
 	if err != nil {
 		return nil, err
 	}
+
+	// A non-empty include switches to enumeration mode: src is a container,
+	// each selected child is copied to dest/<base name>.
+	if len(args.Include) > 0 {
+		return nil, runCopyEnumerate(ctx, args, src)
+	}
+
+	ctx.logger.Infof("Copy: %s => %s", args.Src, args.Dest)
 	dest := ctx.resolveDest(args.Dest)
 
 	isFile, err := utils.IsFile(src)
@@ -138,7 +136,7 @@ func runCopy(ctx *StepContext, args *copyArgs) (any, error) {
 		return nil, nil
 	}
 
-	excludes, err := CompilePatternList(args.Exclude)
+	excludes, err := CompileRules(args.Exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -146,40 +144,41 @@ func runCopy(ctx *StepContext, args *copyArgs) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, file := range FilterCandidates(files, nil, excludes) {
-		err := utils.SafeCopyFile(filepath.Join(src, file), filepath.Join(dest, file))
-		if err != nil {
+	for _, file := range files {
+		if excludes.MatchContent(file) {
+			continue
+		}
+		if err := utils.SafeCopyFile(filepath.Join(src, file), filepath.Join(dest, file)); err != nil {
 			return nil, err
 		}
 	}
 	return nil, nil
 }
 
-func runCollect(ctx *StepContext, args *collectArgs) (any, error) {
-	dir, err := utils.ExpandUser(args.Dir)
+func runCopyEnumerate(ctx *StepContext, args *copyArgs, src string) error {
+	isDir, err := utils.IsDir(src)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	depth := args.Depth
-	if depth == 0 {
-		depth = 1
+	if !isDir {
+		return fmt.Errorf("copy: %s is not a directory (include enumerates a container)", src)
 	}
-	collectType := args.Type
-	if collectType == "" {
-		collectType = "any"
-	}
-	if collectType != "dir" && collectType != "file" && collectType != "any" {
-		return nil, fmt.Errorf("invalid type %q (expected dir, file or any)", collectType)
-	}
-	ctx.logger.Infof("Collect: %s (type=%s depth=%d)", dir, collectType, depth)
 
-	includes, err := CompilePatternList(args.Include)
+	includes, err := CompileRules(args.Include)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	excludes, err := CompilePatternList(args.Exclude)
+	excludes, err := CompileRules(args.Exclude)
 	if err != nil {
-		return nil, err
+		return err
+	}
+
+	// Walk as deep as the deepest include rule (rule depths default to 1).
+	depth := 1
+	for i := range includes {
+		if d := includes[i].depthLimit(); d > depth {
+			depth = d
+		}
 	}
 
 	type candidate struct {
@@ -187,41 +186,58 @@ func runCollect(ctx *StepContext, args *collectArgs) (any, error) {
 		isDir bool
 	}
 	candidates := []candidate{}
-	if collectType != "file" {
-		dirs, err := utils.ListDirs(dir, true, depth)
-		if err != nil {
-			return nil, err
-		}
-		for _, rel := range dirs {
-			candidates = append(candidates, candidate{rel, true})
-		}
+	dirs, err := utils.ListDirs(src, true, depth)
+	if err != nil {
+		return err
 	}
-	if collectType != "dir" {
-		files, err := utils.ListFiles(dir, true, depth)
-		if err != nil {
-			return nil, err
-		}
-		for _, rel := range files {
-			candidates = append(candidates, candidate{rel, false})
-		}
+	for _, rel := range dirs {
+		candidates = append(candidates, candidate{rel, true})
+	}
+	files, err := utils.ListFiles(src, true, depth)
+	if err != nil {
+		return err
+	}
+	for _, rel := range files {
+		candidates = append(candidates, candidate{rel, false})
 	}
 
-	output := []any{}
+	matched := []candidate{}
 	for _, c := range candidates {
-		if len(includes) > 0 && !includes.MatchesAny(c.rel) {
+		if len(includes) > 0 && !includes.MatchCandidate(c.isDir, c.rel) {
 			continue
 		}
-		if excludes.MatchesAny(c.rel) {
-			continue
-		}
-		output = append(output, newFileInfo(dir, c.rel, c.isDir))
+		matched = append(matched, c)
 	}
-	ctx.logger.Infof("Collect: %d matched", len(output))
-	return output, nil
+
+	destDir := ctx.resolveDest(args.Dest)
+	ctx.logger.Infof("Copy: matched %d items", len(matched))
+	for _, c := range matched {
+		abs := filepath.Join(src, c.rel)
+		target := filepath.Join(destDir, filepath.Base(c.rel))
+		ctx.logger.Infof("Copy: %s => %s", c.rel, target)
+		if !c.isDir {
+			if err := utils.SafeCopyFile(abs, target); err != nil {
+				return err
+			}
+			continue
+		}
+		files, err := utils.ListFiles(abs, true, -1)
+		if err != nil {
+			return err
+		}
+		for _, file := range files {
+			if excludes.MatchContent(file) {
+				continue
+			}
+			if err := utils.SafeCopyFile(filepath.Join(abs, file), filepath.Join(target, file)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// newFileInfo builds the {name, path, rel, ext} item shape shared by
-// collect and latest-file.
+// newFileInfo builds the {name, path, rel, ext} output shape of latest-file.
 func newFileInfo(dir, rel string, isDir bool) map[string]any {
 	name := filepath.Base(rel)
 	ext := ""

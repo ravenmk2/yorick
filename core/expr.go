@@ -27,7 +27,6 @@ type ExprScope struct {
 	Env   map[string]string `expr:"env"`
 	Os    string            `expr:"os"`
 	Steps map[string]any    `expr:"steps"`
-	Item  any               `expr:"item"`
 
 	IsDir     func(string) bool           `expr:"isDir"`
 	IsFile    func(string) bool           `expr:"isFile"`

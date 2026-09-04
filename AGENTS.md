@@ -16,11 +16,11 @@ Yorick 是 Go 1.25 编写的 CLI 备份采集工具，按定义文件把应用�
 - `core/script.go`、`core/func.go`、`core/task.go` — JS 引擎侧（冻结，勿改行为）
 - `core/spec.go` — YAML 加载器；所有加载期校验集中在此（未知 func、向前引用、表达式预编译、arg key 校验）
 - `core/expr.go` — `${{ }}` 表达式（expr-lang）。作用域为 `ExprScope`；纯函数必须是函数字段而非方法（expr-lang 不认方法上的 expr tag）
-- `core/pattern.go` — include/exclude 模式：默认 glob（doublestar，全串匹配），`re:` 前缀为正则（MatchString）；匹配前 `filepath.ToSlash`；glob 的 `*` 不跨目录
-- `core/runner.go` — YAML 执行器。foreach step 只注册最后一次迭代的 output
-- `core/steps.go` — 8 个 step func 的注册表与实现；args 严格解码（插值 → yaml round-trip + KnownFields）
+- `core/pattern.go` — include/exclude 规则：`Rule{Type, Pattern}` 两种写法（字符串简写/映射）、选择级 MatchCandidate 与内容级 MatchContent（dir/any 规则命中上级目录即剪子树）；默认 glob（doublestar，全串匹配），`re:` 前缀为正则（MatchString）；匹配前 `filepath.ToSlash`；规则可带 depth（仅 include，默认 1，层级 ≤ depth 命中）；glob 的 `*` 不跨目录
+- `core/runner.go` — YAML 执行器
+- `core/steps.go` — 7 个 step func 的注册表与实现；args 严格解码（插值 → yaml round-trip + KnownFields）
 - `utils/` — 文件/目录/ini 工具，两个引擎共用
-- `examples/` — 示例；`sample.yaml` 同时是 schema 规范文档
+- `examples/` — 示例；`sample.yaml` 同时是 schema 规范文档，`tour.yaml` 为功能全览
 - `.github/workflows/` — CI：`test.yml`（push 到 master/develop，三平台 vet + test + build），`release.yml`（push `v*` tag，交叉编译四平台二进制并上传到 release 页）
 
 ## 构建与验证

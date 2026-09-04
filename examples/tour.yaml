@@ -1,0 +1,105 @@
+# =============================================================================
+# Yorick YAML 功能全览 —— 覆盖 schema 的全部用法（示例性质，路径均为示意）
+# 规范细节与书写规则见 sample.yaml 的头部注释
+# =============================================================================
+
+version: 1
+name: tour
+
+vars:
+  PROGRAMS: C:/Programs
+  EXCLUDES: &common_excludes              # 锚点：复用规则列表
+    - 'cache*'
+    - { type: dir, pattern: 'node_modules' }
+
+tasks:
+
+  # ── copy：单文件 ────────────────────────────────────────────────────────────
+  - name: File
+    dest: file
+    steps:
+      - func: copy
+        args:
+          src: ~/.gitconfig
+          dest: .gitconfig
+
+  # ── copy：目录 + 内容级排除（规则的两种写法）────────────────────────────────
+  - name: Dir
+    dest: dir
+    steps:
+      - func: copy
+        args:
+          src: ~/projects/demo
+          dest: demo
+          exclude:
+            - '*.log'                             # 简写 = type: any；命中文件即排除
+            - { type: dir, pattern: 'plugins*' }  # 命中上级目录 = 整棵子树被剪掉
+
+  # ── copy：枚举模式（include/depth 存在时 src 视为容器，逐项拷到 dest/<原名>）─
+  - name: Enumerate
+    dest: enum
+    steps:
+      - func: copy
+        args:
+          src: ~/AppData/Roaming/JetBrains
+          dest: .
+          include:
+            - { type: dir, pattern: '*[0-9][0-9][0-9][0-9].[0-9]*' }
+            # 规则可带 depth（默认 1）：{ type: file, pattern: '*.xml', depth: 2 }
+          exclude: *common_excludes               # 内容级，对每个子项生效
+
+  # ── if：任务级 / 步骤级条件；log；format ───────────────────────────────────
+  - name: Conditions
+    dest: cond
+    if: ${{ os == 'windows' }}                    # 守卫整个任务
+    steps:
+      - func: log
+        args:
+          msg: ${{ format('running on %s', os) }} # 整值表达式，保留原始类型
+      - func: copy
+        if: ${{ env.JAVA_HOME != '' }}            # 守卫单个步骤
+        args:
+          src: ${{ env.JAVA_HOME }}/release       # 嵌入式插值
+          dest: java-release.txt
+
+  # ── read-ini + latest-file：先探测、后经 steps.<id>.output 引用 ─────────────
+  - name: Dynamic
+    dest: dynamic
+    steps:
+      - id: profile                               # 被引用才需要 id
+        func: read-ini
+        args:
+          file: ~/AppData/Roaming/Mozilla/Firefox/installs.ini
+          expr: '[0].Default'                     # [n]=第 n 个 section；也可 'Section.Key'
+      - id: bookmark
+        func: latest-file
+        args:
+          dir: ${{ steps.profile.output }}/bookmarkbackups
+      - func: copy
+        args:
+          src: ${{ steps.bookmark.output.path }}  # 输出形状 {name, path, rel, ext}
+          dest: ${{ steps.bookmark.output.name[0:20] + steps.bookmark.output.ext }}
+
+  # ── reg-export / hosts-file ────────────────────────────────────────────────
+  - name: System
+    dest: system
+    steps:
+      - func: reg-export                          # 非 Windows 平台自动跳过
+        args:
+          key: HKEY_CURRENT_USER/Environment      # 正斜杠书写，导出时自动转
+          dest: env-user.reg
+      - func: hosts-file                          # 源路径按 OS 定义
+        args:
+          dest: hosts.txt                         # 省略 dest 则用原名 hosts
+
+  # ── exec：命令输出落盘 ─────────────────────────────────────────────────────
+  - name: Exec
+    dest: exec
+    steps:
+      - func: exec
+        args:
+          cmd: git --version                      # 无 stdout：输出进日志
+      - func: exec
+        args:
+          cmd: code --list-extensions
+          stdout: extensions.txt                  # 有 stdout：写入 dest 下该文件

@@ -9,16 +9,26 @@
 #
 # 通用规则：
 #   1. 动态值一律走 ${{ }} 表达式，没有裸引用
-#   2. 表达式只读：可访问 vars / env / os / steps.<id>.output / item，
+#   2. 表达式只读：可访问 vars / env / os / steps.<id>.output，
 #      以及 isDir、isFile、fileExt 等纯函数（expr-lang 语法），不产生副作用
-#   3. 会产生「可被引用的输出」的探测（collect / read-ini / latest-file）
+#   3. 会产生「可被引用的输出」的探测（read-ini / latest-file）
 #      必须是 step，输出经 steps.<id>.output 访问；引用只能指向上方的 step
 #   4. 只有被引用的 step 才需要写 id
 #   5. 值里含 ${{ }} 时不要用行内 flow 写法 { src: ${{ ... }} }，
 #      YAML 会把 { } 当 flow 边界截断，必须写成块状多行
-#   6. 所有 include / exclude 是模式列表：默认 glob（* ? ** {a,b} [0-9]），
-#      re: 前缀则为正则（按原样匹配，需 ^$ 自行锚定）；匹配对象是
-#      以 / 分隔的相对路径；列表内 OR、exclude 优先、空 include = 全部
+#   6. include / exclude 是规则列表，每条规则两种写法（可混写）：
+#        - 'plugins*'                              简写，等价 type: any
+#        - { type: dir, pattern: 'plugins*' }      type: dir|file|any，默认 any
+#      pattern 默认 glob（* ? ** {a,b} [0-9]），re: 前缀为正则（按原样匹配，
+#      ^$ 自行锚定）；匹配对象是以 / 分隔的相对路径。
+#      include 永远是选择级（挑选 src 的子项）；exclude 永远是内容级：
+#      文件命中 file/any 规则被排除；其任一上级目录命中 dir/any 规则，
+#      整棵子树被排除。列表内 OR。
+#      规则可带 depth（仅 include，默认 1）：候选项层级 ≤ depth 才命中，如
+#      { type: file, pattern: '*.xml', depth: 2 } 匹配两层内的 xml 文件
+#   7. copy 的 args 书写顺序约定：src → dest → include → exclude。
+#      include 非空时 src 视为容器：枚举其子项（规则内可带 depth，默认 1），
+#      逐项拷到 dest/<原名>；否则直接拷贝 src。
 # =============================================================================
 
 version: 1
@@ -29,14 +39,14 @@ vars:
   PROGRAMS: C:/Programs            # 原 CUSTOM_PROGRAMS_DIR
   USER_DATA: C:/Home/UserData      # 原 USER_DATA_DIR
 
-  # 原 IDEA_EXCLUDE_PATTERNS，glob 化（原来全是前缀匹配）。
-  # 注意：候选是文件的相对路径，glob 的 * 不跨目录，排除整棵子树要写 'xxx*/**'
+  # 原 IDEA_EXCLUDE_PATTERNS。dir/any 规则命中上级目录即剪掉整棵子树，
+  # 所以 'plugins*' 就够了，不需要 'plugins*/**'
   IDEA_EXCLUDES: &idea_excludes    # &定义锚点，下方用 *idea_excludes 复用
-    - 'jdbc-drivers*/**'
-    - 'mdn*/**'
-    - 'plugins*/**'
-    - 'tasks*/**'
-    - 'workspace*/**'
+    - 'jdbc-drivers*'
+    - 'mdn*'
+    - 'plugins*'
+    - 'tasks*'
+    - 'workspace*'
 
 tasks:
 
@@ -65,7 +75,7 @@ tasks:
     dest: app-data/ssh
     steps:
       # copy 三合一：src 是文件则拷文件、是目录则拷目录（原 copyFile / copyDir），
-      # exclude 为可选正则列表（原 copyDirEx）
+      # exclude 为可选规则列表（原 copyDirEx，语法见顶部规则 6）
       - func: copy
         args: { src: ~/.ssh, dest: . }
 
@@ -238,32 +248,18 @@ tasks:
       - func: copy
         args: { src: ~/.m2/settings.xml, dest: .m2/settings.xml }
 
-  # ---------------------------------------------------------------------------
-  # 集合 + 过滤 + 循环：原 JS 中的 listJetBrainsApps() 辅助函数被 collect 取代。
-  #   collect   枚举目录；include / exclude 为模式列表（语法见顶部规则 6）；
-  #             输出 {name, path, rel, ext} 数组
-  #   foreach   任意动作都可声明，对数组逐元素执行，元素经 item 访问；
-  #             src / dest 中的表达式逐元素求值，即「转换表达式」；
-  #             空数组 = 跳过该 step 并记日志，不是错误
-  # ---------------------------------------------------------------------------
+  # 枚举模式：include 挑选 src 的子目录，逐项拷到 dest/<原名>，
+  # exclude 再对每个子项的内容生效（见顶部规则 6/7）
   - name: JetBrains
     dest: app-data/JetBrains
     steps:
-      - id: apps
-        func: collect
-        args:
-          dir: ~/AppData/Roaming/JetBrains
-          depth: 1
-          type: dir
-          include:
-            - '*[0-9][0-9][0-9][0-9].[0-9]*'   # 如 Rider2024.1
-            # 需要精确匹配时仍可用正则：- 're:^([^\d]+)(\d{4})\.(\d+)$'
       - func: copy
-        foreach: ${{ steps.apps.output }}
         args:
-          src: ${{ item.path }}
-          dest: ${{ item.name }}
-          exclude: *idea_excludes           # 锚点引用 vars 里的排除列表
+          src: ~/AppData/Roaming/JetBrains
+          dest: .
+          include:
+            - { type: dir, pattern: '*[0-9][0-9][0-9][0-9].[0-9]*' }   # 如 Rider2024.1
+          exclude: *idea_excludes
 
   - name: UserData
     dest: user-data

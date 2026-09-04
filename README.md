@@ -4,7 +4,7 @@ Yorick 是一个备份采集工具：按一份定义文件，把散落在系统�
 
 支持两种定义格式：
 
-- **YAML（推荐）**：声明式工作流，带表达式、条件、循环与加载期校验
+- **YAML（推荐）**：声明式工作流，带表达式、条件与加载期校验
 - **JavaScript（旧格式）**：基于 otto 引擎的脚本，保留兼容
 
 ## 构建
@@ -50,7 +50,7 @@ yorick run                 # 省略时自动探测 .yorick.yaml → .yorick.yml 
 
 ## YAML 定义格式
 
-完整且始终最新的格式说明见 [examples/sample.yaml](examples/sample.yaml) 的头部注释（它就是规范），此处是要点速览。
+完整且始终最新的格式说明见 [examples/sample.yaml](examples/sample.yaml) 的头部注释（它就是规范），覆盖全部功能的导览见 [examples/tour.yaml](examples/tour.yaml)，此处是要点速览。
 
 ```yaml
 version: 1
@@ -69,13 +69,13 @@ tasks:
 
 - 顶层：`version`（必填，目前为 1）、`name`（可选）、`vars`（可选，静态常量）、`tasks`（必填，按声明顺序执行）
 - 任务：`name`、`dest`（输出目录下的子目录）、`if`（可选条件）、`steps`（顺序执行）
-- 步骤：`func` + `args`；可选 `id`（仅被 `steps.<id>.output` 引用时才需要）、`if`、`foreach`（对列表逐元素执行，元素经 `item` 访问）
+- 步骤：`func` + `args`；可选 `id`（仅被 `steps.<id>.output` 引用时才需要）、`if`
 
 ### 表达式
 
 动态值一律写 `${{ }}`（[expr-lang](https://expr-lang.org/) 语法，加载期编译检查）：
 
-- 作用域：`vars.*`、`env.*`（环境变量，缺失为 `''`）、`os`（windows / linux / darwin）、`steps.<id>.output`、`item`（foreach 内）
+- 作用域：`vars.*`、`env.*`（环境变量，缺失为 `''`）、`os`（windows / linux / darwin）、`steps.<id>.output`
 - 纯函数：`isDir`、`isFile`、`fileExt`、`absPath`、`isAbsPath`、`format`
 - 整个值恰好是一个 `${{ }}` 时保留原始类型（列表、布尔等）；嵌在字符串中则求值后拼接
 - 注意：含 `${{ }}` 的值不要用行内 flow 写法 `{ src: ${{ ... }} }`——YAML 会把 `{ }` 当 flow 边界截断，必须写成块状多行
@@ -84,8 +84,7 @@ tasks:
 
 | func | args | 输出 |
 |---|---|---|
-| `copy` | `src`、`dest`、`exclude`（可选） | — |
-| `collect` | `dir`、`depth`（默认 1）、`type`（dir / file / any，默认 any）、`include`、`exclude` | `{name, path, rel, ext}` 数组 |
+| `copy` | `src`、`dest`、`include`、`exclude`（后两者可选） | — |
 | `read-ini` | `file`、`expr`（如 `[0].Default`） | 字符串 |
 | `latest-file` | `dir`、`depth`（默认 1） | `{name, path, rel, ext}` |
 | `reg-export` | `key`、`dest`（Windows 专属，其它平台跳过） | — |
@@ -95,15 +94,20 @@ tasks:
 
 `read-ini` 的 `expr` 是路径表达式：`.` 分段，`[n]` 取第 n 个 section（0 起，按文件出现顺序），最后一段是键名。
 
-### include / exclude 模式
+`copy` 的 `include` 非空时 `src` 视为容器：枚举其子项，逐项拷到 `dest/<原名>`；否则直接拷贝 `src`。
 
-- 默认 **glob**（`*` `?` `**` `{a,b}` `[0-9]`）；`re:` 前缀则为正则（按原样匹配，`^$` 需自己写）
-- 匹配对象是 `/` 分隔的相对路径；glob 的 `*` 不跨目录，排除整棵子树要写 `plugins*/**`
-- 列表内 OR、exclude 优先、空 include = 全部
+### include / exclude 规则
+
+- 每条规则两种写法（可混写）：`'plugins*'` 简写（等价 `type: any`），或 `{ type: dir, pattern: 'plugins*' }`（`type`：`dir` / `file` / `any`，默认 `any`）
+- pattern 默认 **glob**（`*` `?` `**` `{a,b}` `[0-9]`）；`re:` 前缀则为正则（按原样匹配，`^$` 需自己写）
+- 匹配对象是 `/` 分隔的相对路径；glob 的 `*` 不跨 `/`
+- `include` 是选择级（挑选 `src` 的子项）；`exclude` 是内容级：文件命中 file/any 规则被排除，任一上级目录命中 dir/any 规则则整棵子树被剪掉
+- 规则可带可选 depth（仅 include，默认 1，候选项层级 ≤ depth 才命中）
+- 列表内 OR（include 非空才进入枚举模式，见上）
 
 ## JavaScript 定义格式（旧）
 
-见 [examples/sample.js](examples/sample.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `core/func.go`、`core/script.go`）。该路径保留兼容；`if`、`foreach`、`exec` 等新能力只在 YAML 格式提供。
+见 [examples/sample.js](examples/sample.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `core/func.go`、`core/script.go`）。该路径保留兼容；`if`、`exec` 等新能力只在 YAML 格式提供。
 
 ## License
 

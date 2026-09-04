@@ -29,20 +29,18 @@ type TaskSpec struct {
 }
 
 type StepSpec struct {
-	Id      string         `yaml:"id,omitempty"`
-	Func    string         `yaml:"func"`
-	If      string         `yaml:"if,omitempty"`
-	Foreach string         `yaml:"foreach,omitempty"`
-	Args    map[string]any `yaml:"args,omitempty"`
+	Id   string         `yaml:"id,omitempty"`
+	Func string         `yaml:"func"`
+	If   string         `yaml:"if,omitempty"`
+	Args map[string]any `yaml:"args,omitempty"`
 }
 
 var stepRefRegex = regexp.MustCompile(`steps\.([A-Za-z_][A-Za-z0-9_-]*)\.output`)
 
-// patternArgs lists, per func, the args holding pattern lists so literal
-// patterns can be pre-compiled at load time.
-var patternArgs = map[string][]string{
-	"copy":    {"exclude"},
-	"collect": {"include", "exclude"},
+// ruleArgs lists, per func, the args holding rule lists so literal rules
+// can be validated at load time.
+var ruleArgs = map[string][]string{
+	"copy": {"include", "exclude"},
 }
 
 func LoadSpec(path string) (*Spec, error) {
@@ -137,15 +135,10 @@ func (s *Spec) compileTask(index int, task *TaskSpec) error {
 				return err
 			}
 		}
-		if step.Foreach != "" {
-			if err := s.compileForeach(step.Foreach, ids, stepWhere+" foreach"); err != nil {
-				return err
-			}
-		}
 		if err := s.compileStepArgs(step, ids, stepWhere); err != nil {
 			return err
 		}
-		if err := validateStepPatterns(step, stepWhere); err != nil {
+		if err := validateStepRules(step, stepWhere); err != nil {
 			return err
 		}
 
@@ -173,23 +166,6 @@ func (s *Spec) compileCondition(source string, ids map[string]bool, where string
 		return err
 	}
 	if err := s.programs.compileInner(inners[0], true); err != nil {
-		return fmt.Errorf("%s: %w", where, err)
-	}
-	return nil
-}
-
-func (s *Spec) compileForeach(source string, ids map[string]bool, where string) error {
-	inners, whole, err := scanExpr(source)
-	if err != nil {
-		return fmt.Errorf("%s: %w", where, err)
-	}
-	if !whole {
-		return fmt.Errorf("%s: must be a single ${{ }} expression: %q", where, source)
-	}
-	if err := validateStepRefs(inners[0], ids, where); err != nil {
-		return err
-	}
-	if err := s.programs.compileInner(inners[0], false); err != nil {
 		return fmt.Errorf("%s: %w", where, err)
 	}
 	return nil
@@ -276,22 +252,38 @@ func validateStepArgKeys(entry *stepEntry, args map[string]any, where string) er
 	return nil
 }
 
-// validateStepPatterns pre-compiles literal include/exclude patterns;
-// patterns containing expressions are skipped (resolved at run time).
-func validateStepPatterns(step *StepSpec, where string) error {
-	for _, key := range patternArgs[step.Func] {
+// validateStepRules validates literal include/exclude rules (both the
+// scalar shorthand and the {type, pattern} mapping form); rules whose
+// pattern contains an expression are skipped (resolved at run time). Depth
+// is include-only: a literal exclude rule carrying depth fails here,
+// deferred ones are tolerated (MatchContent ignores depth at runtime).
+func validateStepRules(step *StepSpec, where string) error {
+	for _, key := range ruleArgs[step.Func] {
 		list, ok := step.Args[key].([]any)
 		if !ok {
 			continue
 		}
+		rules := make([]Rule, 0, len(list))
 		for i, item := range list {
-			raw, ok := item.(string)
-			if !ok || strings.Contains(raw, exprOpen) {
-				continue
+			if key == "exclude" {
+				if m, ok := item.(map[string]any); ok {
+					if d, ok := m["depth"]; ok && !strings.Contains(fmt.Sprint(d), exprOpen) {
+						return fmt.Errorf("%s: %s[%d]: depth is include-only, not allowed on exclude rules", where, key, i)
+					}
+				}
 			}
-			if _, err := CompilePattern(raw); err != nil {
-				return fmt.Errorf("%s: %s[%d]: %w", where, key, i, err)
+			data, err := yaml.Marshal(item)
+			if err != nil {
+				return err
 			}
+			var rule Rule
+			if err := yaml.Unmarshal(data, &rule); err != nil {
+				return fmt.Errorf("%s: %s: %w", where, key, err)
+			}
+			rules = append(rules, rule)
+		}
+		if err := ValidateRules(rules); err != nil {
+			return fmt.Errorf("%s: %s: %w", where, key, err)
 		}
 	}
 	return nil

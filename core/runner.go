@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 
 	"github.com/sirupsen/logrus"
 )
@@ -65,36 +64,6 @@ func runStep(spec *Spec, ctx *StepContext, scope *ExprScope, task *TaskSpec, ste
 		}
 	}
 
-	if step.Foreach != "" {
-		inners, _, err := scanExpr(step.Foreach)
-		if err != nil {
-			return fmt.Errorf("%s foreach: %w", where, err)
-		}
-		value, err := spec.programs.evalInner(inners[0], false, scope)
-		if err != nil {
-			return fmt.Errorf("%s foreach: %w", where, err)
-		}
-		items, err := toSlice(value)
-		if err != nil {
-			return fmt.Errorf("%s foreach: %w", where, err)
-		}
-		if len(items) == 0 {
-			ctx.logger.Infof("Step %d: no items, skipped", index+1)
-			return nil
-		}
-		for _, item := range items {
-			scope.Item = item
-			output, err := dispatchStep(spec, ctx, scope, step, where)
-			if err != nil {
-				return err
-			}
-			// A foreach step registers the LAST iteration's output.
-			registerStepOutput(scope, step, output)
-		}
-		scope.Item = nil
-		return nil
-	}
-
 	output, err := dispatchStep(spec, ctx, scope, step, where)
 	if err != nil {
 		return err
@@ -122,16 +91,4 @@ func registerStepOutput(scope *ExprScope, step *StepSpec, output any) {
 		return
 	}
 	scope.Steps[step.Id] = map[string]any{"output": output}
-}
-
-func toSlice(value any) ([]any, error) {
-	rv := reflect.ValueOf(value)
-	if !rv.IsValid() || (rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array) {
-		return nil, fmt.Errorf("expected a list, got %T", value)
-	}
-	items := make([]any, rv.Len())
-	for i := range items {
-		items[i] = rv.Index(i).Interface()
-	}
-	return items, nil
 }

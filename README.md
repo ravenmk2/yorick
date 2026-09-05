@@ -1,8 +1,8 @@
 # Yorick
 
-Yorick 是一个备份采集工具：按一份定义文件，把散落在系统各处的应用配置——文件、目录、注册表项、hosts、命令输出——采集到一个输出目录，再交给下游工具（restic / 7z / rclone…）做压缩、存储与版本管理。
+Yorick 是一个备份采集工具：按一份作业定义，把散落在系统各处的应用配置——文件、目录、注册表项、hosts、命令输出——采集到一个输出目录，再交给下游工具（restic / 7z / rclone…）做压缩、存储与版本管理。
 
-支持两种定义格式：
+作业支持两种定义格式：
 
 - **YAML（推荐）**：声明式工作流，带表达式、条件与加载期校验
 - **JavaScript（旧格式）**：基于 otto 引擎的脚本，保留兼容
@@ -44,11 +44,11 @@ yorick run                 # 省略时自动探测 .yorick.yaml → .yorick.yml 
 | 参数 | 说明 |
 |---|---|
 | `-o, --output` | 输出目录，默认 `.backup` |
-| `-f, --file` | 定义文件路径（同位置参数） |
+| `-f, --file` | 作业定义文件路径（同位置参数） |
 | `-s, --script` | 旧参数名，已废弃（仍可用，打印警告） |
 | `--debug` | 调试日志 |
 
-## YAML 定义格式
+## YAML 作业格式
 
 完整且始终最新的格式说明见 [examples/sample.yaml](examples/sample.yaml) 的头部注释（它就是规范），覆盖全部功能的导览见 [examples/tour.yaml](examples/tour.yaml)，此处是要点速览。
 
@@ -90,7 +90,7 @@ tasks:
 | `reg-export` | `key`、`dest`（Windows 专属，其它平台跳过） | — |
 | `hosts-file` | `dest`（默认 `hosts`） | — |
 | `log` | `msg` | — |
-| `exec` | `cmd`、`stdout`（可选，命令输出落到该文件） | — |
+| `exec` | `cmd`；可选 `args`（逐项传参，不经 shell）、`cwd`（工作目录）、`stdout`（命令输出落到该文件） | — |
 
 `read-ini` 的 `expr` 是路径表达式：`.` 分段，`[n]` 取第 n 个 section（0 起，按文件出现顺序），最后一段是键名。
 
@@ -105,7 +105,7 @@ tasks:
 - 规则可带可选 depth（仅 include，默认 1，候选项层级 ≤ depth 才命中）
 - 列表内 OR（include 非空才进入枚举模式，见上）
 
-## JavaScript 定义格式（旧）
+## JavaScript 作业格式（旧）
 
 见 [examples/sample.js](examples/sample.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `core/func.go`、`core/script.go`）。该路径保留兼容；`if`、`exec` 等新能力只在 YAML 格式提供。
 

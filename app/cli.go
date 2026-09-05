@@ -71,7 +71,7 @@ func NewCliApp() *cli.App {
 func NewRunCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "run",
-		Usage:     "Run a backup script",
+		Usage:     "Run a backup job",
 		ArgsUsage: "<file>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "debug", Required: false, Value: false},
@@ -95,7 +95,7 @@ func NewRunCommand() *cli.Command {
 			case ".js":
 				return ExecRunScript(scriptFile, outputDir)
 			default:
-				return fmt.Errorf("unsupported script file type: %s (expected .yaml, .yml or .js)", scriptFile)
+				return fmt.Errorf("unsupported job file type: %s (expected .yaml, .yml or .js)", scriptFile)
 			}
 		},
 	}
@@ -120,5 +120,5 @@ func resolveScriptFile(ctx *cli.Context) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("no script file found (tried %s); pass a file argument or -f/--file", strings.Join(candidates, ", "))
+	return "", fmt.Errorf("no job file found (tried %s); pass a file argument or -f/--file", strings.Join(candidates, ", "))
 }

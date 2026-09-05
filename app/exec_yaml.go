@@ -6,7 +6,7 @@ import (
 )
 
 func ExecRunSpec(specFile, outputDir string) error {
-	logrus.Infof("Spec file: %s", specFile)
+	logrus.Infof("Job file: %s", specFile)
 
 	spec, err := core.LoadSpec(specFile)
 	if err != nil {

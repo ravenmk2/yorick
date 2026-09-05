@@ -4,7 +4,7 @@
 
 Yorick 是 Go 1.25 编写的 CLI 备份采集工具，按一份作业定义（job file）把应用配置采集到输出目录。术语层级：作业（一份定义文件、一次运行）→ 任务（`tasks:` 条目）→ 步骤（`steps:`）。两种定义格式并存：
 
-- **YAML（主路径）**：声明式工作流。规范即 `examples/sample.yaml` 的头部注释——改动 schema 时必须同步更新它
+- **YAML（主路径）**：声明式工作流。规范即 `examples/backup.yaml` 的头部注释——改动 schema 时必须同步更新它
 - **JavaScript（冻结）**：otto 引擎的旧格式，保持兼容、不改行为；新能力只落在 YAML 路径
 
 ## 目录结构
@@ -20,7 +20,7 @@ Yorick 是 Go 1.25 编写的 CLI 备份采集工具，按一份作业定义（jo
 - `core/runner.go` — YAML 执行器
 - `core/steps.go` — 7 个 step func 的注册表与实现；args 严格解码（插值 → yaml round-trip + KnownFields）
 - `utils/` — 文件/目录/ini 工具，两个引擎共用
-- `examples/` — 示例；`sample.yaml` 同时是 schema 规范文档，`tour.yaml` 为功能全览
+- `examples/` — 示例；`backup.yaml` 同时是 schema 规范文档，`tour.yaml` 为功能全览
 - `.github/workflows/` — CI：`test.yml`（push 到 master/develop，三平台 vet + test + build），`release.yml`（push `v*` tag，交叉编译四平台二进制并上传到 release 页）
 
 ## 构建与验证

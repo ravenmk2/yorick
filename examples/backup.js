@@ -1,4 +1,4 @@
-// Sample Script
+// Backup Script
 
 var CUSTOM_PROGRAMS_DIR = 'C:/Programs'
 var USER_DATA_DIR = 'C:/Home/UserData'

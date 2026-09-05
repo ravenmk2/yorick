@@ -50,7 +50,7 @@ yorick run                 # 省略时自动探测 .yorick.yaml → .yorick.yml 
 
 ## YAML 作业格式
 
-完整且始终最新的格式说明见 [examples/sample.yaml](examples/sample.yaml) 的头部注释（它就是规范），覆盖全部功能的导览见 [examples/tour.yaml](examples/tour.yaml)，此处是要点速览。
+完整且始终最新的格式说明见 [examples/backup.yaml](examples/backup.yaml) 的头部注释（它就是规范），覆盖全部功能的导览见 [examples/tour.yaml](examples/tour.yaml)，此处是要点速览。
 
 ```yaml
 version: 1
@@ -107,7 +107,7 @@ tasks:
 
 ## JavaScript 作业格式（旧）
 
-见 [examples/sample.js](examples/sample.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `core/func.go`、`core/script.go`）。该路径保留兼容；`if`、`exec` 等新能力只在 YAML 格式提供。
+见 [examples/backup.js](examples/backup.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `core/func.go`、`core/script.go`）。该路径保留兼容；`if`、`exec` 等新能力只在 YAML 格式提供。
 
 ## License
 

@@ -61,8 +61,10 @@ type logArgs struct {
 }
 
 type execArgs struct {
-	Cmd    string `yaml:"cmd"`
-	Stdout string `yaml:"stdout,omitempty"`
+	Cmd    string   `yaml:"cmd"`
+	Args   []string `yaml:"args,omitempty"`
+	Cwd    string   `yaml:"cwd,omitempty"`
+	Stdout string   `yaml:"stdout,omitempty"`
 }
 
 type stepEntry struct {
@@ -364,13 +366,26 @@ func runLog(ctx *StepContext, args *logArgs) (any, error) {
 }
 
 func runExec(ctx *StepContext, args *execArgs) (any, error) {
-	ctx.logger.Infof("Exec: %s", args.Cmd)
-
 	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", args.Cmd)
+	if len(args.Args) > 0 {
+		// args present: cmd is the executable, run without a shell
+		ctx.logger.Infof("Exec: %s %s", args.Cmd, strings.Join(args.Args, " "))
+		cmd = exec.Command(args.Cmd, args.Args...)
 	} else {
-		cmd = exec.Command("sh", "-c", args.Cmd)
+		ctx.logger.Infof("Exec: %s", args.Cmd)
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", args.Cmd)
+		} else {
+			cmd = exec.Command("sh", "-c", args.Cmd)
+		}
+	}
+
+	if args.Cwd != "" {
+		cwd, err := utils.ExpandUser(args.Cwd)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Dir = cwd
 	}
 
 	var stdout bytes.Buffer

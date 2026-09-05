@@ -99,7 +99,13 @@ tasks:
       - func: exec
         args:
           cmd: git --version                      # 无 stdout：输出进日志
+      - func: exec                                # 给 args 则不经 shell，逐项传参
+        args:
+          cmd: code
+          args: [--list-extensions]
+          stdout: extensions.txt                  # 有 stdout：写入 dest 下该文件
       - func: exec
         args:
-          cmd: code --list-extensions
-          stdout: extensions.txt                  # 有 stdout：写入 dest 下该文件
+          cmd: git
+          args: [status, --short]
+          cwd: '~'                                # 可选工作目录，支持 ~ 和插值（注意 ~ 要加引号）

@@ -5,7 +5,7 @@ Yorick 是一个备份采集工具：按一份作业定义，把散落在系统�
 作业支持两种定义格式：
 
 - **YAML（推荐）**：声明式工作流，带表达式、条件与加载期校验
-- **JavaScript（旧格式）**：基于 otto 引擎的脚本，保留兼容
+- **JavaScript**：基于 otto 引擎的脚本
 
 ## 构建
 
@@ -45,8 +45,8 @@ yorick run                 # 省略时自动探测 .yorick.yaml → .yorick.yml 
 |---|---|
 | `-o, --output` | 输出目录，默认 `.backup` |
 | `-f, --file` | 作业定义文件路径（同位置参数） |
-| `-s, --script` | 旧参数名，已废弃（仍可用，打印警告） |
-| `--debug` | 调试日志 |
+| `--log-level` | 日志级别：debug / info / warn / error，默认 info |
+| `--debug` | 等价于 `--log-level debug` |
 
 ## YAML 作业格式
 
@@ -105,9 +105,9 @@ tasks:
 - 规则可带可选 depth（仅 include，默认 1，候选项层级 ≤ depth 才命中）
 - 列表内 OR（include 非空才进入枚举模式，见上）
 
-## JavaScript 作业格式（旧）
+## JavaScript 作业格式
 
-见 [examples/backup.js](examples/backup.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `core/func.go`、`core/script.go`）。该路径保留兼容；`if`、`exec` 等新能力只在 YAML 格式提供。
+见 [examples/backup.js](examples/backup.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `scripted/func.go`、`scripted/script.go`）。
 
 ## License
 

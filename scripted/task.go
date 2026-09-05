@@ -1,4 +1,4 @@
-package core
+package scripted
 
 import (
 	"github.com/robertkrimen/otto"

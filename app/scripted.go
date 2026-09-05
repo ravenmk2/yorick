@@ -5,22 +5,22 @@ import (
 
 	"github.com/robertkrimen/otto"
 	"github.com/sirupsen/logrus"
-	"yorick/core"
+	"yorick/scripted"
 )
 
-func ExecRunScript(scriptFile, outputDir string) error {
-	logrus.Infof("Script file: %s", scriptFile)
+func RunScripted(jobFile, outputDir string) error {
+	logrus.Infof("Job file: %s", jobFile)
 	logrus.Infof("Output directory: %s", outputDir)
 
-	content, err := os.ReadFile(scriptFile)
+	content, err := os.ReadFile(jobFile)
 	if err != nil {
 		return err
 	}
-	script := string(content)
+	source := string(content)
 
 	vm := otto.New()
-	fo := core.NewFunctionsObject(vm)
-	so := core.NewScriptObject(vm, outputDir)
+	fo := scripted.NewFunctionsObject(vm)
+	so := scripted.NewScriptObject(vm, outputDir)
 
 	err = fo.RegisterFuncs()
 	if err != nil {
@@ -32,7 +32,7 @@ func ExecRunScript(scriptFile, outputDir string) error {
 		return err
 	}
 
-	_, err = vm.Run(core.InitScript + script)
+	_, err = vm.Run(scripted.InitScript + source)
 	if err != nil {
 		return err
 	}

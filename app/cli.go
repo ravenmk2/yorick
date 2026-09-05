@@ -22,7 +22,7 @@ func RunCliApp() error {
 var runFlagsWithValue = map[string]bool{
 	"-o": true, "--output": true,
 	"-f": true, "--file": true,
-	"-s": true, "--script": true,
+	"--log-level": true,
 }
 
 // normalizeRunArgs hoists run flags ahead of the first positional argument:
@@ -75,44 +75,45 @@ func NewRunCommand() *cli.Command {
 		ArgsUsage: "<file>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "debug", Required: false, Value: false},
+			&cli.StringFlag{Name: "log-level", Required: false},
 			&cli.StringFlag{Name: "file", Aliases: []string{"f"}, Required: false},
-			&cli.StringFlag{Name: "script", Aliases: []string{"s"}, Required: false},
 			&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Required: false, Value: ".backup"},
 		},
 		Action: func(ctx *cli.Context) error {
-			debug := ctx.Bool("debug")
-			if debug {
+			if ctx.IsSet("log-level") {
+				level, err := logrus.ParseLevel(ctx.String("log-level"))
+				if err != nil {
+					return err
+				}
+				logrus.SetLevel(level)
+			} else if ctx.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
-			scriptFile, err := resolveScriptFile(ctx)
+			jobFile, err := resolveJobFile(ctx)
 			if err != nil {
 				return err
 			}
 			outputDir := ctx.String("output")
-			switch strings.ToLower(filepath.Ext(scriptFile)) {
+			switch strings.ToLower(filepath.Ext(jobFile)) {
 			case ".yaml", ".yml":
-				return ExecRunSpec(scriptFile, outputDir)
+				return RunDeclarative(jobFile, outputDir)
 			case ".js":
-				return ExecRunScript(scriptFile, outputDir)
+				return RunScripted(jobFile, outputDir)
 			default:
-				return fmt.Errorf("unsupported job file type: %s (expected .yaml, .yml or .js)", scriptFile)
+				return fmt.Errorf("unsupported job file type: %s (expected .yaml, .yml or .js)", jobFile)
 			}
 		},
 	}
 }
 
-// resolveScriptFile picks the script file by precedence: positional
-// argument > -f/--file > -s/--script (deprecated) > auto-detect.
-func resolveScriptFile(ctx *cli.Context) (string, error) {
+// resolveJobFile picks the job file by precedence: positional
+// argument > -f/--file > auto-detect.
+func resolveJobFile(ctx *cli.Context) (string, error) {
 	if ctx.Args().Len() > 0 {
 		return ctx.Args().First(), nil
 	}
 	if ctx.IsSet("file") {
 		return ctx.String("file"), nil
-	}
-	if ctx.IsSet("script") {
-		logrus.Warn("Flag -s/--script is deprecated, use -f/--file or a positional argument instead")
-		return ctx.String("script"), nil
 	}
 	candidates := []string{".yorick.yaml", ".yorick.yml", ".yorick.js"}
 	for _, candidate := range candidates {

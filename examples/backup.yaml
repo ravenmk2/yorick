@@ -50,7 +50,7 @@ vars:
 
 tasks:
 
-  # if 为任务级条件（新增能力，原 JS 没有）：表达式为真才执行，否则整个任务跳过。
+  # if 为任务级条件：表达式为真才执行，否则整个任务跳过。
   # os 是内置变量（windows / linux / darwin）。
   - name: Windows
     dest: windows
@@ -129,7 +129,7 @@ tasks:
       - func: copy
         args: { src: ~/AppData/Roaming/NuGet/NuGet.Config, dest: NuGet.Config }
 
-  # if 的另一种典型用法：应用没安装就静默跳过（原 JS 只能报错刷屏）
+  # if 的另一种典型用法：应用没安装就静默跳过
   - name: Chrome
     dest: app-data/Chrome
     if: ${{ isDir('~/AppData/Local/Google/Chrome/User Data') }}
@@ -227,7 +227,7 @@ tasks:
       - func: copy
         args: { src: ~/AppData/Roaming/Code/User/snippets, dest: snippets }
 
-      # exec 示例（原 JS 没有此能力，仅演示）：把命令输出存进备份目录。
+      # exec 示例：把命令输出存进备份目录。
       # 只给 cmd 时整条命令交 shell 执行（Windows 走 cmd /C，其它走 sh -c）；
       # 给了 args 则不经 shell，cmd 是可执行文件名，args 逐项传参（可含 ${{ }}）；
       # cwd 为可选工作目录（支持 ~）。
@@ -237,7 +237,7 @@ tasks:
       #     args: [--list-extensions]
       #     stdout: extensions.txt
 
-  # if 守卫环境变量（新增）：原 JS 在 M2_HOME 未设置时会拿到空串并报错。
+  # if 守卫环境变量：M2_HOME 未设置则整个任务跳过。
   # env 是 map[string]string，缺失 key 返回 ''（同 Go 语义），显式比较即可。
   - name: Maven
     dest: app-data/Maven

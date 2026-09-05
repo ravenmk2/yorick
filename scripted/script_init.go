@@ -1,3 +1,3 @@
-package core
+package scripted
 
 var InitScript = ``

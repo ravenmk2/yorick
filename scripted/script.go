@@ -1,11 +1,14 @@
 package scripted
 
 import (
+	"fmt"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 
-	"github.com/robertkrimen/otto"
+	"github.com/grafana/sobek"
 	"github.com/sirupsen/logrus"
 	"yorick/utils"
 )
@@ -17,15 +20,16 @@ const (
 
 type ScriptObject struct {
 	logger     *logrus.Logger
-	vm         *otto.Otto
+	vm         *sobek.Runtime
 	outputDir  string
 	subDir     string
 	currentDir string
 	tasks      []*TaskInfo
+	rejections []*sobek.Promise
 }
 
-func NewScriptObject(vm *otto.Otto, outputDir string) *ScriptObject {
-	return &ScriptObject{
+func NewScriptObject(vm *sobek.Runtime, outputDir string) *ScriptObject {
+	s := &ScriptObject{
 		logger:     logrus.StandardLogger(),
 		vm:         vm,
 		outputDir:  outputDir,
@@ -33,13 +37,49 @@ func NewScriptObject(vm *otto.Otto, outputDir string) *ScriptObject {
 		currentDir: outputDir,
 		tasks:      []*TaskInfo{},
 	}
+	vm.SetPromiseRejectionTracker(func(p *sobek.Promise, operation sobek.PromiseRejectionOperation) {
+		switch operation {
+		case sobek.PromiseRejectionReject:
+			s.rejections = append(s.rejections, p)
+		case sobek.PromiseRejectionHandle:
+			s.rejections = slices.DeleteFunc(s.rejections, func(rejected *sobek.Promise) bool { return rejected == p })
+		}
+	})
+	return s
 }
 
-func (s *ScriptObject) DefineTask(name string, value *otto.Value) {
+func (s *ScriptObject) RunScript(name, source string) error {
+	result, err := s.vm.RunScript(name, source)
+	if err != nil {
+		return err
+	}
+	if err := s.checkSyncResult(result); err != nil {
+		return fmt.Errorf("job %q: %w", name, err)
+	}
+	return nil
+}
+
+func (s *ScriptObject) checkSyncResult(result sobek.Value) error {
+	// Sobek drains microtasks before returning; a rejection may have been handled since it was reported.
+	if len(s.rejections) > 0 {
+		return fmt.Errorf("unhandled Promise rejection: %v (jobs must be synchronous)", s.rejections[0].Result())
+	}
+	// Inspect the type without exporting arbitrary objects, which could invoke getters.
+	if result != nil && result.ExportType() == reflect.TypeFor[*sobek.Promise]() {
+		return fmt.Errorf("Promise results are not supported; jobs and task callbacks must be synchronous")
+	}
+	return nil
+}
+
+func (s *ScriptObject) DefineTask(name string, value sobek.Value) {
+	fn, ok := sobek.AssertFunction(value)
+	if !ok {
+		panic(s.vm.NewTypeError("task %q: callback must be a function", name))
+	}
 	task := &TaskInfo{
 		Name: name,
 		dir:  name,
-		fn:   value,
+		fn:   fn,
 	}
 	s.tasks = append(s.tasks, task)
 }
@@ -50,9 +90,12 @@ func (s *ScriptObject) ExecTasks() error {
 		n := i + 1
 		s.logger.Infof("[%d/%d] Task: %s", n, count, task.Name)
 		c := NewTaskContext(task)
-		_, err := task.fn.Call(otto.NullValue(), c)
+		result, err := task.fn(sobek.Null(), s.vm.ToValue(c))
 		if err != nil {
-			return err
+			return fmt.Errorf("task %q: %w", task.Name, err)
+		}
+		if err := s.checkSyncResult(result); err != nil {
+			return fmt.Errorf("task %q: %w", task.Name, err)
 		}
 	}
 	return nil

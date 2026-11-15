@@ -5,11 +5,13 @@ Yorick 是一个备份采集工具：按一份作业定义，把散落在系统�
 作业支持两种定义格式：
 
 - **YAML（推荐）**：声明式工作流，带表达式、条件与加载期校验
-- **JavaScript**：基于 otto 引擎的脚本
+- **JavaScript**：基于 [Sobek](https://github.com/grafana/sobek) 引擎的同步脚本
 
 ## 构建
 
-开发构建（保留调试信息）：
+需要 Go 1.26 或更新版本。
+
+默认构建（保留调试信息）：
 
 ```sh
 go build -o yorick.exe .
@@ -108,6 +110,15 @@ tasks:
 ## JavaScript 作业格式
 
 见 [examples/backup.js](examples/backup.js)。全局函数包括 `task`、`destDir`、`copyFile`、`copyDir`、`copyDirEx`、`exportReg`、`putHostsFile`、`getEnv`、`readIni`、`listDirs`、`listFiles`、`findLatestFile` 等（实现见 `scripted/func.go`、`scripted/script.go`）。
+
+支持 `const/let`、箭头函数、模板字符串、解构、可选链等现代 JavaScript 语法。任务在脚本加载完成后，按注册顺序同步执行；脚本或任务返回 Promise（包括 `async` 任务），以及执行结束时仍未处理的 Promise rejection，都会使作业失败。没有模块加载器、定时器或事件循环。
+
+函数与运行行为：
+
+- `listDirs` / `listFiles` 在目录为空或读取失败时返回空数组；失败时记录警告。
+- `console.log/info/debug/warn/error` 按对应 logrus 级别输出，`log` 使用 info 级别；参数转为字符串后用空格连接，不解释 `%s` 等占位符（格式化可使用 `format` 或 `logInfo`）。`console.dir/time/timeEnd/trace/assert` 为空操作。
+- `"use strict"` 启用严格模式，给未声明变量赋值会报错。
+- `copyDirEx` 的排除规则使用 Go `regexp` 语法。
 
 ## License
 

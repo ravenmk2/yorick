@@ -2,10 +2,10 @@
 
 ## 项目概览
 
-Yorick 是 Go 1.25 编写的 CLI 备份采集工具，按一份作业定义（job file）把应用配置采集到输出目录。术语层级：作业（一份定义文件、一次运行）→ 任务（`tasks:` 条目）→ 步骤（`steps:`）。两种定义格式并存：
+Yorick 是 Go 1.26 编写的 CLI 备份采集工具，按一份作业定义（job file）把应用配置采集到输出目录。术语层级：作业（一份定义文件、一次运行）→ 任务（`tasks:` 条目）→ 步骤（`steps:`）。两种定义格式并存：
 
 - **YAML**：声明式工作流。规范即 `examples/backup.yaml` 的头部注释——改动 schema 时必须同步更新它
-- **JavaScript**：otto 引擎的脚本式工作流
+- **JavaScript**：Sobek 引擎的同步脚本式工作流
 
 ## 目录结构
 
@@ -13,7 +13,7 @@ Yorick 是 Go 1.25 编写的 CLI 备份采集工具，按一份作业定义（jo
 - `app/cli.go` — CLI（urfave/cli v2）。`run`：位置参数 / `-f` / 自动探测，按扩展名分发。注意 `normalizeRunArgs`：cli/v2 的 flag 解析停在第一个位置参数，必须把 flag 提前，勿删
 - `app/scripted.go` — 脚本式路径入口
 - `app/declarative.go` — 声明式路径入口
-- `scripted/` — 脚本式作业引擎（otto）：`script.go`、`script_init.go`、`func.go`、`task.go`
+- `scripted/` — 脚本式作业引擎（Sobek）：`script.go`、`script_init.go`、`func.go`、`console.go`、`task.go`；拒绝 Promise 执行结果及未处理的 rejection
 - `declarative/` — 声明式作业引擎（YAML）：
   - `spec.go` — YAML 加载器；所有加载期校验集中在此（未知 func、向前引用、表达式预编译、arg key 校验）
   - `expr.go` — `${{ }}` 表达式（expr-lang）。作用域为 `ExprScope`；纯函数必须是函数字段而非方法（expr-lang 不认方法上的 expr tag）

@@ -5,17 +5,17 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/robertkrimen/otto"
+	"github.com/grafana/sobek"
 	"github.com/sirupsen/logrus"
 	"yorick/utils"
 )
 
 type FunctionsObject struct {
 	logger *logrus.Logger
-	vm     *otto.Otto
+	vm     *sobek.Runtime
 }
 
-func NewFunctionsObject(vm *otto.Otto) *FunctionsObject {
+func NewFunctionsObject(vm *sobek.Runtime) *FunctionsObject {
 	return &FunctionsObject{
 		logger: logrus.StandardLogger(),
 		vm:     vm,
@@ -81,7 +81,7 @@ func (o *FunctionsObject) ListDirs(dir string, relative bool, maxDepth int) []st
 	files, err := utils.ListDirs(dir, relative, maxDepth)
 	if err != nil {
 		o.logger.Warnf("ListDirs: %s", err.Error())
-		return nil
+		return []string{}
 	}
 	return files
 }
@@ -90,7 +90,7 @@ func (o *FunctionsObject) ListFiles(dir string, relative bool, maxDepth int) []s
 	files, err := utils.ListFiles(dir, relative, maxDepth)
 	if err != nil {
 		o.logger.Warnf("ListFiles: %s", err.Error())
-		return nil
+		return []string{}
 	}
 	return files
 }
@@ -136,5 +136,5 @@ func (o *FunctionsObject) RegisterFuncs() error {
 			return err
 		}
 	}
-	return nil
+	return o.registerConsole()
 }

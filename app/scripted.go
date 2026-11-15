@@ -3,7 +3,7 @@ package app
 import (
 	"os"
 
-	"github.com/robertkrimen/otto"
+	"github.com/grafana/sobek"
 	"github.com/sirupsen/logrus"
 	"yorick/scripted"
 )
@@ -18,7 +18,7 @@ func RunScripted(jobFile, outputDir string) error {
 	}
 	source := string(content)
 
-	vm := otto.New()
+	vm := sobek.New()
 	fo := scripted.NewFunctionsObject(vm)
 	so := scripted.NewScriptObject(vm, outputDir)
 
@@ -32,7 +32,7 @@ func RunScripted(jobFile, outputDir string) error {
 		return err
 	}
 
-	_, err = vm.Run(scripted.InitScript + source)
+	err = so.RunScript(jobFile, scripted.InitScript+source)
 	if err != nil {
 		return err
 	}

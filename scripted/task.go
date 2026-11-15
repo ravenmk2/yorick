@@ -1,14 +1,14 @@
 package scripted
 
 import (
-	"github.com/robertkrimen/otto"
+	"github.com/grafana/sobek"
 	"github.com/sirupsen/logrus"
 )
 
 type TaskInfo struct {
 	Name string
 	dir  string
-	fn   *otto.Value
+	fn   sobek.Callable
 }
 
 type TaskContext struct {
